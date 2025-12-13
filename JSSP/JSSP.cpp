@@ -2,6 +2,8 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
+#include "JSSPLib.h"
+
 #include <iostream>
 #include <vector>
 #include <algorithm>
@@ -13,132 +15,235 @@
 #include <GLFW/glfw3.h>
 #include <cstdint>
 #include <cmath>
+#include <climits> // for INT_MAX / INT_MIN
 
-// no std::filesystem to keep dependencies minimal
+#ifdef _WIN32
+// Prevent windows.h from defining `min`/`max` macros which break std::min/std::max
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
-struct Operation
+// Helper: enumerate files in a folder and attempt to load problems
+static std::vector<std::pair<std::string, Problem>> loadProblemsFromFolder(const std::string& folder)
 {
-    int jobId;
-    int machineId;
-    int duration;
-};
+    std::vector<std::pair<std::string, Problem>> results;
+#ifdef _WIN32
+    std::string folderNormalized = folder;
+    if (!folderNormalized.empty() && (folderNormalized.back() == '\\' || folderNormalized.back() == '/'))
+        folderNormalized.pop_back();
 
-struct Job
-{
-    std::vector<Operation> operations;
-};
+    std::string pattern = folderNormalized + "\\*";
+    WIN32_FIND_DATAA findData;
+    HANDLE hFind = FindFirstFileA(pattern.c_str(), &findData);
+    if (hFind == INVALID_HANDLE_VALUE)
+        return results;
 
-struct MachineSchedule
-{
-    int time = 0;
-};
-
-struct ScheduledOp
-{
-    int jobId;
-    int machineId;
-    int start;
-    int finish;
-};
-
-struct Problem
-{
-    std::string name;
-    int numJobs;
-    int numMachines;
-    std::vector<Job> jobs;
-};
-
-// Helper: extract filename from a path without <filesystem>
-static std::string filenameFromPath(const std::string& path)
-{
-    size_t pos = path.find_last_of("/\\");
-    return (pos == std::string::npos) ? path : path.substr(pos + 1);
-}
-
-// Load JSSP problem from file
-Problem loadProblem(const std::string& filepath)
-{
-    Problem p;
-    p.name = filenameFromPath(filepath);
-    std::ifstream in(filepath);
-    if (!in)
-        throw std::runtime_error("Cannot open file: " + filepath);
-
-    in >> p.numJobs >> p.numMachines;
-    if (!in || p.numJobs <= 0 || p.numMachines <= 0)
-        throw std::runtime_error("Invalid header in problem file: " + filepath);
-
-    p.jobs.clear();
-    p.jobs.resize(p.numJobs);
-
-    for (int j = 0; j < p.numJobs; j++)
+    do
     {
-        for (int o = 0; o < p.numMachines; o++)
+        const char* name = findData.cFileName;
+        if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
+            continue;
+
+        if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+            continue; // skip subfolders
+
+        std::string fullpath = folderNormalized + "\\" + name;
+
+        // try to load as a JSSP problem - loadProblem will throw on parse errors
+        try
         {
-            int m, d;
-            in >> m >> d;
-            if (!in)
-                throw std::runtime_error("Unexpected EOF or parse error in file: " + filepath);
-            if (m < 0 || m >= p.numMachines)
-                throw std::runtime_error("Machine id out of range in file: " + filepath);
-            if (d < 0)
-                throw std::runtime_error("Negative duration in file: " + filepath);
-            p.jobs[j].operations.push_back({ j, m, d });
+            Problem p = loadProblem(fullpath);
+            results.emplace_back(fullpath, std::move(p));
         }
-    }
-    return p;
-}
-
-// Greedy solver
-std::vector<ScheduledOp> solveJSSP(const Problem& p)
-{
-    std::vector<MachineSchedule> machines(p.numMachines);
-    std::vector<int> jobCompletionTime(p.numJobs, 0);
-    std::vector<ScheduledOp> schedule;
-
-    for (auto& job : p.jobs)
-    {
-        for (auto& op : job.operations)
+        catch (...)
         {
-            int startTime = std::max(jobCompletionTime[op.jobId], machines[op.machineId].time);
-            int finishTime = startTime + op.duration;
-            machines[op.machineId].time = finishTime;
-            jobCompletionTime[op.jobId] = finishTime;
-            schedule.push_back({ op.jobId, op.machineId, startTime, finishTime });
+            // ignore non-problem files
         }
-    }
-    return schedule;
+    } while (FindNextFileA(hFind, &findData) != 0);
+
+    FindClose(hFind);
+#else
+    // Non-Windows platforms: simple attempt using POSIX dirent if available
+    // (left intentionally minimal since the project avoids std::filesystem)
+    // If dirent isn't available, return empty list.
+    // Keep this branch safe/portable.
+#endif
+    return results;
 }
 
-// Export solution to simple TXT
-void exportSolutionTXT(const Problem& p, const std::vector<ScheduledOp>& schedule, const std::string& filename)
+int main()
 {
-    std::ofstream out(filename);
-    if (!out)
+    // Init GLFW + ImGui
+    if (!glfwInit())
+        return -1;
+    GLFWwindow* window = glfwCreateWindow(900, 600, "JSSP Problem Browser", NULL, NULL);
+    if (!window)
     {
-        std::cerr << "Error: Cannot write to " << filename << "\n";
-        return;
+        glfwTerminate();
+        return -1;
     }
-    int makespan = 0;
-    for (auto& op : schedule)
-        if (op.finish > makespan)
-            makespan = op.finish;
+    glfwMakeContextCurrent(window);
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 130");
 
-    out << "Problem: " << p.name << "\n";
-    out << "Jobs: " << p.numJobs << "\n";
-    out << "Machines: " << p.numMachines << "\n";
-    out << "Makespan: " << makespan << "\n";
-    out << "Schedule (job machine start finish):\n";
-    for (auto& op : schedule)
+    // Simple folder path input for scanning a folder of problems
+    char folderpath_buf[260] = "problems";
+    Problem selectedProblem;
+    bool hasProblem = false;
+    std::vector<ScheduledOp> lastSchedule;
+    bool showGantt = false; // toggle to display in-GUI Gantt
+
+    // container for discovered problems: pair<fullpath, Problem>
+    std::vector<std::pair<std::string, Problem>> problems;
+    int selectedIndex = -1;
+
+    while (!glfwWindowShouldClose(window))
     {
-        out << op.jobId << " " << op.machineId << " " << op.start << " " << op.finish << "\n";
+        glfwPollEvents();
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        ImGui::Begin("JSSP Problem Browser");
+
+        ImGui::Text("Load a folder containing JSSP problem files:");
+        ImGui::InputText("Folder path", folderpath_buf, sizeof(folderpath_buf));
+        ImGui::SameLine();
+        if (ImGui::Button("Load Folder"))
+        {
+            problems = loadProblemsFromFolder(std::string(folderpath_buf));
+            selectedIndex = -1;
+            hasProblem = false;
+            lastSchedule.clear();
+        }
+
+        ImGui::Separator();
+
+        // Problems list
+        ImGui::Text("Problems found: %d", (int)problems.size());
+        ImGui::BeginChild("problems_list", ImVec2(300, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
+        for (int i = 0; i < (int)problems.size(); ++i)
+        {
+            const Problem& p = problems[i].second;
+            const std::string& fullpath = problems[i].first;
+            // show filename in list
+            if (ImGui::Selectable((std::to_string(i) + " - " + p.name).c_str(), selectedIndex == i))
+            {
+                selectedIndex = i;
+                selectedProblem = p;
+                hasProblem = true;
+                lastSchedule.clear();
+            }
+
+            // Hover tooltip with problem details
+            if (ImGui::IsItemHovered())
+            {
+                ImGui::BeginTooltip();
+                ImGui::Text("File: %s", fullpath.c_str());
+                ImGui::Separator();
+                ImGui::Text("Name: %s", p.name.c_str());
+                ImGui::Text("Jobs: %d", p.numJobs);
+                ImGui::Text("Machines: %d", p.numMachines);
+                int totalOps = 0;
+                int minDur = INT_MAX, maxDur = INT_MIN;
+                long long sumDur = 0;
+                for (const auto& job : p.jobs)
+                {
+                    totalOps += (int)job.operations.size();
+                    for (const auto& op : job.operations)
+                    {
+                        sumDur += op.duration;
+                        minDur = std::min(minDur, op.duration);
+                        maxDur = std::max(maxDur, op.duration);
+                    }
+                }
+                double avgDur = (totalOps > 0) ? (double)sumDur / (double)totalOps : 0.0;
+                ImGui::Text("Total operations: %d", totalOps);
+                ImGui::Text("Operations per job: %d", p.numMachines);
+                ImGui::Text("Avg duration / op: %.2f", avgDur);
+                if (totalOps > 0)
+                {
+                    ImGui::Text("Min duration: %d", minDur);
+                    ImGui::Text("Max duration: %d", maxDur);
+                }
+                ImGui::EndTooltip();
+            }
+        }
+        ImGui::EndChild();
+
+        ImGui::SameLine();
+
+        // Selected problem panel, solver and export controls (keeps original behavior)
+        ImGui::BeginGroup();
+        if (hasProblem)
+        {
+            ImGui::Text("Problem: %s", selectedProblem.name.c_str());
+            ImGui::Text("Jobs: %d", selectedProblem.numJobs);
+            ImGui::Text("Machines: %d", selectedProblem.numMachines);
+            ImGui::Text("Operations per job: %d", selectedProblem.numMachines);
+
+            if (ImGui::Button("Solve Problem"))
+            {
+                lastSchedule = solveJSSP(selectedProblem);
+                showGantt = true;
+            }
+
+            if (!lastSchedule.empty())
+            {
+                int makespan = 0;
+                for (auto& op : lastSchedule)
+                    if (op.finish > makespan)
+                        makespan = op.finish;
+                ImGui::Text("Solution Makespan: %d", makespan);
+
+                if (ImGui::Button("Export Solution (TXT)"))
+                {
+                    exportSolutionTXT(selectedProblem, lastSchedule, "solution.txt");
+                }
+                ImGui::SameLine();
+                ImGui::Checkbox("Show Gantt Chart", &showGantt);
+
+                if (showGantt)
+                {
+                    ImGui::Separator();
+                    // drawGanttUI implementation is unchanged and still present below
+                    extern void drawGanttUI(const std::vector<ScheduledOp>&schedule, int numMachines, int numJobs);
+                    drawGanttUI(lastSchedule, selectedProblem.numMachines, selectedProblem.numJobs);
+                }
+            }
+        }
+        else
+        {
+            ImGui::TextWrapped("No problem selected. Load a folder and select a problem from the list.");
+        }
+        ImGui::EndGroup();
+
+        ImGui::End();
+        ImGui::Render();
+        int display_w, display_h;
+        glfwGetFramebufferSize(window, &display_w, &display_h);
+        // Correct glViewport usage: x, y, width, height
+        glViewport(0, 0, display_w, display_h);
+        glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        glfwSwapBuffers(window);
     }
-    std::cout << "Solution exported to " << filename << "\n";
+
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+    glfwDestroyWindow(window);
+    glfwTerminate();
+    return 0;
 }
 
-// draw a simple Gantt chart inside ImGui
-static void drawGanttUI(const std::vector<ScheduledOp>& schedule, int numMachines, int numJobs)
+// Provide global (non-static) Gantt UI implementation so the symbol used in main is defined.
+void drawGanttUI(const std::vector<ScheduledOp>& schedule, int numMachines, int /*numJobs*/)
 {
     if (schedule.empty())
     {
@@ -236,110 +341,4 @@ static void drawGanttUI(const std::vector<ScheduledOp>& schedule, int numMachine
 
     ImGui::Dummy(ImVec2(0.0f, total_h));
     ImGui::EndChild();
-}
-
-int main()
-{
-    // Init GLFW + ImGui
-    if (!glfwInit())
-        return -1;
-    GLFWwindow* window = glfwCreateWindow(900, 600, "JSSP Problem Browser", NULL, NULL);
-    if (!window)
-    {
-        glfwTerminate();
-        return -1;
-    }
-    glfwMakeContextCurrent(window);
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 130");
-
-    // Simple file path input rather than folder scanning
-    char filepath_buf[260] = "problems/example.txt";
-    Problem selectedProblem;
-    bool hasProblem = false;
-    std::vector<ScheduledOp> lastSchedule;
-    bool showGantt = false; // toggle to display in-GUI Gantt
-
-    while (!glfwWindowShouldClose(window))
-    {
-        glfwPollEvents();
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-
-        ImGui::Begin("JSSP Problem Browser");
-
-        ImGui::Text("Load problem file (enter full path):");
-        ImGui::InputText("File path", filepath_buf, sizeof(filepath_buf));
-        ImGui::SameLine();
-        if (ImGui::Button("Load Problem"))
-        {
-            try
-            {
-                selectedProblem = loadProblem(std::string(filepath_buf));
-                lastSchedule.clear();
-                hasProblem = true;
-            }
-            catch (const std::exception& e)
-            {
-                hasProblem = false;
-                std::cerr << e.what() << "\n";
-            }
-        }
-
-        if (hasProblem)
-        {
-            ImGui::Separator();
-            ImGui::Text("Problem: %s", selectedProblem.name.c_str());
-            ImGui::Text("Jobs: %d", selectedProblem.numJobs);
-            ImGui::Text("Machines: %d", selectedProblem.numMachines);
-            ImGui::Text("Operations per job: %d", selectedProblem.numMachines);
-
-            if (ImGui::Button("Solve Problem"))
-            {
-                lastSchedule = solveJSSP(selectedProblem);
-                showGantt = true;
-            }
-
-            if (!lastSchedule.empty())
-            {
-                int makespan = 0;
-                for (auto& op : lastSchedule)
-                    if (op.finish > makespan)
-                        makespan = op.finish;
-                ImGui::Text("Solution Makespan: %d", makespan);
-
-                if (ImGui::Button("Export Solution (TXT)"))
-                {
-                    exportSolutionTXT(selectedProblem, lastSchedule, "solution.txt");
-                }
-                ImGui::SameLine();
-                ImGui::Checkbox("Show Gantt Chart", &showGantt);
-
-                if (showGantt)
-                {
-                    ImGui::Separator();
-                    drawGanttUI(lastSchedule, selectedProblem.numMachines, selectedProblem.numJobs);
-                }
-            }
-        }
-        ImGui::End();
-        ImGui::Render();
-        int display_w, display_h;
-        glfwGetFramebufferSize(window, &display_w, &display_h);
-        glViewport(0, 0, display_w, display_h);
-        glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        glfwSwapBuffers(window);
-    }
-
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-    glfwDestroyWindow(window);
-    glfwTerminate();
-    return 0;
 }
