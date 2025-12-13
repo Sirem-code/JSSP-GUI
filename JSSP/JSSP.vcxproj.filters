@@ -45,6 +45,9 @@
     <ClCompile Include="imgui\imgui_impl_opengl3.cpp">
       <Filter>Source Files\imgui</Filter>
     </ClCompile>
+    <ClCompile Include="JSSPLib.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="imgui\imgui.h">
@@ -73,6 +76,9 @@
     </ClInclude>
     <ClInclude Include="glfw\include\glfw3.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="JSSPLib.h">
+      <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
