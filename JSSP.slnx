@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="JSSP/JSSP.vcxproj" Id="a75f566f-ec70-49f4-a476-c50905ed4d55" />
+</Solution>
