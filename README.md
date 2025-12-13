@@ -1,4 +1,4 @@
-# JSSP GUI — Visual Studio 2026 Setup
+# JSSP GUI - Visual Studio 2026 Setup
 
 This project uses GLFW (OpenGL) and imgui. If you get include errors, do the following: 
 
