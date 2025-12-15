@@ -71,8 +71,8 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>C:\Users\FAPPAS\source\repos\JSSP\JSSP\glfw\include\GLFW;C:\Users\FAPPAS\source\repos\JSSP\JSSP\glfw\include;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Users\FAPPAS\source\repos\JSSP\JSSP\glfw\library;$(LibraryPath)</LibraryPath>
+    <IncludePath>C:\Users\ermis\source\repos\Sirem-code\JSSP-GUI\JSSP\glfw\include\GLFW;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Users\ermis\source\repos\Sirem-code\JSSP-GUI\JSSP\glfw\library;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>

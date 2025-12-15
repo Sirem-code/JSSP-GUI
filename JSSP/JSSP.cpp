@@ -12,7 +12,7 @@
 #include <sstream>
 #include <cstdio>
 #include <stdexcept>
-#include <GLFW/glfw3.h>
+#include <glfw3.h>
 #include <cstdint>
 #include <cmath>
 #include <climits> // for INT_MAX / INT_MIN
