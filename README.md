@@ -1,4 +1,18 @@
-# JSSP GUI - Visual Studio 2026 Setup
+# JSSP GUI Solver 
+
+This app is made in C++ and uses OpenGL for GUI. The data folder contains `15 JSSP instances`, you may add your own by copy and pasting JSSP to a txt file and then placing it in the data folder.
+You can use the following website for `JSSP instances`: https://people.brunel.ac.uk/~mastjjb/jeb/orlib/files/jobshop1.txt
+
+# Features
+
+- Greedy approach solving algorithm
+- Full fledged Gantt chart for solution visualization implemented with OpenGL and imgui
+- Solution export (txt format)
+- File parser for JSSP
+- Characteristics tab for any given JSSP
+- Unit tests with catch2
+
+# SETUP - Visual Studio 2026
 
 This project uses GLFW (OpenGL) and imgui. If you get include errors, do the following: 
 
@@ -24,3 +38,11 @@ Notes
 
 Optional
 - Use `vcpkg` to install a matching GLFW for your toolset: `vcpkg install glfw3:x64-windows` and `vcpkg integrate install`.
+
+# Unit tests
+
+1. Open test.slnx, right-click project node and open __Properties__
+
+2. __C/C++ -> General__
+   - Add `Sirem-code\JSSP-GUI\tests\catch2` and `Sirem-code\JSSP-GUI\JSSP` in `Additional Include Directories`
+   - Build tests
