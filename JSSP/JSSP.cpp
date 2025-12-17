@@ -3,6 +3,8 @@
 #include "imgui_impl_opengl3.h"
 
 #include "JSSPLib.h"
+#include "GA.h"
+#include "Greedy.h"
 
 #include <iostream>
 #include <vector>
@@ -141,22 +143,32 @@ int main()
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
 
-    // Simple folder path input for scanning a folder of problems
+    // ---------------- Solver system ----------------
+    std::vector<ISolver*> solvers;
+    solvers.push_back(new GreedySolver());
+    solvers.push_back(new GASolver());
+    int selectedSolverIndex = 0; // default to Greedy
+
+    // GA parameters
+    int gaPopulationSize = 100;
+    int gaGenerations = 500;
+    float gaMutationRate = 0.1f;
+    int gaTournamentSize = 3;
+
+    // ---------------- Problem state ----------------
     char folderpath_buf[260] = "data";
     Problem selectedProblem;
     bool hasProblem = false;
     std::vector<ScheduledOp> lastSchedule;
-    bool showGantt = false; // toggle to display in-GUI Gantt
+    bool showGantt = false;
 
-    // container for discovered problems: pair<fullpath, Problem>
     std::vector<std::pair<std::string, Problem>> problems;
     int selectedIndex = -1;
 
-    // store selected problem source path so exports default next to the problem file
     std::string selectedProblemPath;
-    // last exported path (display feedback)
     std::string lastExportPath;
 
+    // --------------- Main loop ----------------
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
@@ -166,12 +178,13 @@ int main()
 
         ImGui::Begin("JSSP Problem Browser");
 
+        // ---------------- Folder loader ----------------
         ImGui::Text("Load a folder containing JSSP problem files:");
         ImGui::InputText("Folder path", folderpath_buf, sizeof(folderpath_buf));
         ImGui::SameLine();
         if (ImGui::Button("Load Folder"))
         {
-            problems = loadProblemsFromFolder(std::string(folderpath_buf));
+            problems = loadProblemsFromFolder(folderpath_buf);
             selectedIndex = -1;
             hasProblem = false;
             lastSchedule.clear();
@@ -181,25 +194,24 @@ int main()
 
         ImGui::Separator();
 
-        // Problems list
+        // ---------------- Problems list ----------------
         ImGui::Text("Problems found: %d", (int)problems.size());
         ImGui::BeginChild("problems_list", ImVec2(300, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
         for (int i = 0; i < (int)problems.size(); ++i)
         {
             const Problem& p = problems[i].second;
             const std::string& fullpath = problems[i].first;
-            // show filename in list
+
             if (ImGui::Selectable((std::to_string(i) + " - " + p.name).c_str(), selectedIndex == i))
             {
                 selectedIndex = i;
                 selectedProblem = p;
-                selectedProblemPath = fullpath; // remember source path for export location
+                selectedProblemPath = fullpath;
                 hasProblem = true;
                 lastSchedule.clear();
                 lastExportPath.clear();
             }
 
-            // Hover tooltip with problem details
             if (ImGui::IsItemHovered())
             {
                 ImGui::BeginTooltip();
@@ -237,7 +249,7 @@ int main()
 
         ImGui::SameLine();
 
-        // Selected problem panel, solver and export controls (keeps original behavior)
+        // ---------------- Selected problem panel ----------------
         ImGui::BeginGroup();
         if (hasProblem)
         {
@@ -246,29 +258,56 @@ int main()
             ImGui::Text("Machines: %d", selectedProblem.numMachines);
             ImGui::Text("Operations per job: %d", selectedProblem.numMachines);
 
+            // ---------------- Solver selection ----------------
+            const char* solverNames[2] = { solvers[0]->name(), solvers[1]->name() };
+            ImGui::Text("Solver:");
+            ImGui::SameLine();
+            ImGui::Combo("##solver", &selectedSolverIndex, solverNames, IM_ARRAYSIZE(solverNames));
+
+            // ---------------- GA Parameters ----------------
+            if (solvers[selectedSolverIndex]->name() == std::string("Genetic Algorithm"))
+            {
+                ImGui::Separator();
+                ImGui::Text("GA Parameters:");
+                ImGui::SliderInt("Population Size", &gaPopulationSize, 10, 1000);
+                ImGui::SliderInt("Generations", &gaGenerations, 10, 2000);
+                ImGui::SliderFloat("Mutation Rate", &gaMutationRate, 0.0f, 1.0f, "%.2f");
+                ImGui::SliderInt("Tournament Size", &gaTournamentSize, 2, 10);
+            }
+
+            // ---------------- Solve button ----------------
             if (ImGui::Button("Solve Problem"))
             {
-                lastSchedule = solveJSSP(selectedProblem);
+                ISolver* solver = solvers[selectedSolverIndex];
+
+                // Update GA parameters if selected
+                if (GASolver* ga = dynamic_cast<GASolver*>(solver))
+                {
+                    ga->populationSize = gaPopulationSize;
+                    ga->generations = gaGenerations;
+                    ga->mutationRate = gaMutationRate;
+                    ga->tournamentSize = gaTournamentSize;
+                }
+
+                lastSchedule = solver->solve(selectedProblem);
                 showGantt = true;
                 lastExportPath.clear();
             }
 
+            // ---------------- Display solution info ----------------
             if (!lastSchedule.empty())
             {
                 int makespan = 0;
                 for (auto& op : lastSchedule)
-                    if (op.finish > makespan)
-                        makespan = op.finish;
+                    makespan = std::max(makespan, op.finish);
                 ImGui::Text("Solution Makespan: %d", makespan);
 
                 if (ImGui::Button("Export Solution (TXT)"))
                 {
-                    // Open native folder-selection dialog so user can choose where to save solution
                     std::string chosenFolder;
 #ifdef _WIN32
                     chosenFolder = pickFolderWindows();
 #else
-                    // Fallback: default to current folder if no native dialog implemented for the platform
                     chosenFolder = "";
 #endif
                     if (!chosenFolder.empty())
@@ -282,16 +321,10 @@ int main()
                         exportSolutionTXT(selectedProblem, lastSchedule, outpath);
                         lastExportPath = outpath;
                     }
-                    else
-                    {
-                        // user cancelled folder pick: do nothing (optional: you can show a small popup/notification)
-                    }
                 }
-                // feedback showing where file was written (helps avoid confusion about working directory)
+
                 if (!lastExportPath.empty())
-                {
                     ImGui::Text("Exported file: %s", lastExportPath.c_str());
-                }
 
                 ImGui::SameLine();
                 ImGui::Checkbox("Show Gantt Chart", &showGantt);
@@ -299,7 +332,6 @@ int main()
                 if (showGantt)
                 {
                     ImGui::Separator();
-                    // drawGanttUI implementation is unchanged and still present below
                     extern void drawGanttUI(const std::vector<ScheduledOp>&schedule, int numMachines, int numJobs);
                     drawGanttUI(lastSchedule, selectedProblem.numMachines, selectedProblem.numJobs);
                 }
@@ -313,15 +345,19 @@ int main()
 
         ImGui::End();
         ImGui::Render();
+
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h);
-        // Correct glViewport usage: x, y, width, height
         glViewport(0, 0, display_w, display_h);
         glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);
     }
+
+    // ---------------- Cleanup ----------------
+    for (auto s : solvers) delete s;
+    solvers.clear();
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -330,6 +366,7 @@ int main()
     glfwTerminate();
     return 0;
 }
+
 
 // Provide global (non-static) Gantt UI implementation so the symbol used in main is defined.
 void drawGanttUI(const std::vector<ScheduledOp>& schedule, int numMachines, int /*numJobs*/)
@@ -380,6 +417,14 @@ void drawGanttUI(const std::vector<ScheduledOp>& schedule, int numMachines, int 
     float chart_w = px_per_time * (float)makespan;
     // Ensure chart is at least available width so it occupies the region when zoom <= 1
     chart_w = std::max(chart_w, avail_w);
+
+    // Add right padding so rightmost tick/labels are visible
+    {
+        std::string lastLabel = std::to_string(makespan);
+        ImVec2 lastLabelSize = ImGui::CalcTextSize(lastLabel.c_str());
+        const float extraRightPad = std::max(12.0f, lastLabelSize.x + 6.0f);
+        chart_w += extraRightPad;
+    }
 
     // Maximum allowed scroll (in pixels) when chart is wider than visible area
     float scroll_max = std::max(0.0f, chart_w - avail_w);
@@ -481,29 +526,6 @@ void drawGanttUI(const std::vector<ScheduledOp>& schedule, int numMachines, int 
             }
             // otherwise skip label to avoid visual clutter
         }
-    }
-
-    // time ticks - space tick labels by pixel distance to avoid overlaps
-    const float minLabelSpacingPx = 60.0f; // minimal pixels between tick labels
-    int tickStep = 1;
-    if (px_per_time > 0.0f)
-    {
-        tickStep = std::max(1, (int)std::ceil(minLabelSpacingPx / px_per_time));
-    }
-
-    for (int tv = 0; tv <= makespan; tv += tickStep)
-    {
-        float x = baseX + tv * px_per_time;
-        draw_list->AddLine(ImVec2(x, cp.y), ImVec2(x, cp.y + total_h - 20.0f), IM_COL32(0, 0, 0, 40));
-        std::string tlabel = std::to_string(tv);
-        draw_list->AddText(ImVec2(x + 2.0f, cp.y + total_h - 25.0f), IM_COL32(255, 255, 255, 200), tlabel.c_str()); // color and height of time ticks
-    }
-    // ensure last tick at makespan is drawn
-    {
-        float x = baseX + makespan * px_per_time;
-        std::string tlabel = std::to_string(makespan);
-        draw_list->AddLine(ImVec2(x, cp.y), ImVec2(x, cp.y + total_h - 20.0f), IM_COL32(0, 0, 0, 40));
-        draw_list->AddText(ImVec2(x + 2.0f, cp.y + total_h - 25.0f), IM_COL32(255, 255, 255, 200), tlabel.c_str());
     }
 
     // Pop the clip rectangle so subsequent UI isn't clipped

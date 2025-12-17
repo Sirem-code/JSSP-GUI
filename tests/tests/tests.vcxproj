@@ -94,7 +94,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>C:\Users\FAPPAS\source\repos\JSSP\tests\catch2;C:\Users\FAPPAS\source\repos\JSSP\JSSP;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\ermis\source\repos\Sirem-code\JSSP-GUI\tests\catch2;C:\Users\FAPPAS\source\repos\JSSP\tests\catch2;C:\Users\ermis\source\repos\Sirem-code\JSSP-GUI\JSSP;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <UseFullPaths>true</UseFullPaths>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>

@@ -134,6 +134,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="GA.cpp" />
+    <ClCompile Include="Greedy.cpp" />
     <ClCompile Include="imgui\imgui.cpp" />
     <ClCompile Include="imgui\imgui_demo.cpp" />
     <ClCompile Include="imgui\imgui_draw.cpp" />
@@ -145,7 +147,9 @@
     <ClCompile Include="JSSPLib.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="GA.h" />
     <ClInclude Include="glfw\include\glfw3.h" />
+    <ClInclude Include="Greedy.h" />
     <ClInclude Include="imgui\imconfig.h" />
     <ClInclude Include="imgui\imgui.h" />
     <ClInclude Include="imgui\imgui_impl_glfw.h" />
