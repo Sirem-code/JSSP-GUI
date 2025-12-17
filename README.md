@@ -5,7 +5,8 @@ You can use the following website for `JSSP instances`: https://people.brunel.ac
 
 # Features
 
-- Greedy approach solving algorithm
+- Greedy solving algorithm
+- Parametrized GA solver (you can now swap between Greedy and GA using the selector box)
 - Full fledged Gantt chart for solution visualization implemented with OpenGL and imgui
 - Solution export (txt format)
 - File parser for JSSP
