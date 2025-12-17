@@ -47,3 +47,9 @@ Optional
 2. __C/C++ -> General__
    - Add `Sirem-code\JSSP-GUI\tests\catch2` and `Sirem-code\JSSP-GUI\JSSP` in `Additional Include Directories`
    - Build tests
+
+# Notes
+
+About the GA: 
+
+Start with small values (e.g. `50 population size`, `50 generations`, `0.10 mutation rate` and `2 tournament size`) to avoid crashes. This solver is `very resource intensive` but can provide `drastically better results` in comparison to the classic greedy implementation. 
