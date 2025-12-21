@@ -1,7 +1,7 @@
 # JSSP GUI Solver 
 
 This app is made in C++ and uses OpenGL for GUI. The data folder contains `15 JSSP instances`, you may add your own by copy and pasting JSSP to a txt file and then placing it in the data folder.
-You can use the following website for `JSSP instances`: https://people.brunel.ac.uk/~mastjjb/jeb/orlib/files/jobshop1.txt
+You can use the following website for additional `JSSP instances`: https://people.brunel.ac.uk/~mastjjb/jeb/orlib/files/jobshop1.txt
 
 # Features
 
